@@ -1,89 +1,52 @@
 ﻿@page "/"
-@using BlazorExcelExport.XLS
-@inject HttpClient Http          
+@using NPOI.SS.UserModel
+@inject HttpClient Http
 @inject IJSRuntime js
 
-<PageTitle>Test de Julien</PageTitle>
-
-<h1>Weather forecast</h1>
-
-<p>This component demonstrates fetching data from the server.</p>
-
-@if (forecasts == null)
-{
-    <p><em>Loading...</em></p>
-}
-else
-{
-    <table class="table">
-        <thead>
-            <tr>
-                <th>Date</th>
-                <th>Temp. (C)</th>
-                <th>Temp. (F)</th>
-                <th>Summary</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var forecast in forecasts)
-            {
-                <tr>
-                    <td>@forecast.Date.ToShortDateString()</td>
-                    <td>@forecast.TemperatureC</td>
-                    <td>@forecast.TemperatureF</td>
-                    <td>@forecast.Summary</td>
-                </tr>
-            }
-        </tbody>
-    </table>     
-
-    <br />        
-    <button type="button" class="btn btn-success mb-2" @onclick="@ClickExportXLS">Create XLSX</button>
-	
-    <br />
-
-    <button type="button" class="btn btn-success mb-2" @onclick="@ClickTemplateXLS">Template XLSX</button>
-	
-    <br />
-
-    <button type="button" class="btn btn-success mb-2" @onclick="@ClickApplyTemplateExistingFileXLS">Apply Template on a existing file XLSX</button>
-}
+<PageTitle>导入数据</PageTitle>
+<InputFile OnChange="@LoadFiles" multiple />
 
 @code {
-    private WeatherForecast[] forecasts;
-
-    protected override async Task OnInitializedAsync()
+    private async Task LoadFiles(InputFileChangeEventArgs e)
     {
-        forecasts = await Http.GetFromJsonAsync<WeatherForecast[]>("sample-data/weather.json");
+        string path = Path.Combine(Directory.GetCurrentDirectory(), "UploadFiles");
+        if (!Directory.Exists(path))
+            Directory.CreateDirectory(path);
+        string fileName = e.File.Name;
+        string fileNameWithPath = Path.Combine(path, fileName);
+        using (var stream = new FileStream(fileNameWithPath, FileMode.Create))
+        {
+            await e.File.OpenReadStream().CopyToAsync(stream);
+        }
+
+        using (var fs = new FileStream(fileNameWithPath, FileMode.Open, FileAccess.Read))
+        {
+            var workbook = WorkbookFactory.Create(fs);
+            ISheet sheet = workbook.GetSheetAt(0);
+            for (int row = 0; row <= sheet.LastRowNum; row++)
+            {
+                var dataRow = sheet.GetRow(row);
+                if (row > 0)
+                {
+                    var a22 = Convert.ToDecimal(string.IsNullOrEmpty(dataRow.Cells[1].ToString()) ? 0 : dataRow.Cells[1].ToString());
+                    var a23 = Convert.ToDecimal(string.IsNullOrEmpty(dataRow.Cells[2].ToString()) ? 0 : dataRow.Cells[2].ToString());
+                    var a24 = Convert.ToDecimal(string.IsNullOrEmpty(dataRow.Cells[3].ToString()) ? 0 : dataRow.Cells[3].ToString());
+                    var a25 = Convert.ToDecimal(string.IsNullOrEmpty(dataRow.Cells[4].ToString()) ? 0 : dataRow.Cells[4].ToString());
+                    var a26 = Convert.ToDecimal(string.IsNullOrEmpty(dataRow.Cells[5].ToString()) ? 0 : dataRow.Cells[5].ToString());
+                    var a27 = Convert.ToDecimal(string.IsNullOrEmpty(dataRow.Cells[6].ToString()) ? 0 : dataRow.Cells[6].ToString());
+                    var a28 = Convert.ToDecimal(string.IsNullOrEmpty(dataRow.Cells[7].ToString()) ? 0 : dataRow.Cells[7].ToString());
+                    var a29 = Convert.ToDecimal(string.IsNullOrEmpty(dataRow.Cells[8].ToString()) ? 0 : dataRow.Cells[8].ToString());
+                    if (a29 > 0)
+                    {
+                        var res = (a22 + a23 + a24 + a25 + a26 - a27 - a28) / a29;
+                        dataRow.Cells[9].SetCellValue(res.ToString("0.00000"));
+                        dataRow.Cells[10].SetCellValue(Math.Ceiling(res).ToString());
+                    }
+                }
+            }
+            MemoryStream output = new MemoryStream();
+            workbook.Write(output);
+            await js.InvokeVoidAsync("BlazorDownloadFile", fileName, output.ToArray());
+        }
     }
-
-    private async void ClickExportXLS()
-    {
-        var xls = new Excel();
-        await xls.GenerateWeatherForecastAsync(js, forecasts, "export.xlsx");
-    }
-
-    private async void ClickTemplateXLS()
-    {
-        Stream streamTemplate = await Http.GetStreamAsync("xls/template2.xlsx");
-
-        var xls = new Excel();
-        await xls.TemplateWeatherForecastAsync(js, streamTemplate, forecasts, "template.xlsx");
-    }
-
-	[Inject]
-    public HttpClient _client { get; set; }
-	
-    private async void ClickApplyTemplateExistingFileXLS()
-    {
-        Stream streamTemplate = await Http.GetStreamAsync("xls/template.xlsx");
-
-        var xls = new Excel();
-        await xls.TemplateOnExistingFileAsync(_client, 
-                                              js, 
-                                              streamTemplate, 
-                                              forecasts, 
-                                              @"xls\Existing_File.xlsx");
-    }
-    
 }
